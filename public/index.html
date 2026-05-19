@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="AI-powered explainer video generator. Enter any topic and get a professional video with narration and subtitles.">
+  <title>AI Video Generator</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+<h1>AI Explainer Video Generator</h1>
+
+<input id="topicInput" placeholder="Enter topic">
+
+<select id="durationSelect">
+  <option value="30">30 seconds</option>
+  <option value="60">60 seconds</option>
+</select>
+
+<button id="generateBtn">Generate Video</button>
+
+<!-- Progress Section -->
+<div id="progressSection" style="display:none;">
+  <div class="progress-card">
+    <p id="progressLabel" class="progress-label">Initializing...</p>
+    <div class="progress-bar-track">
+      <div id="progressBar" class="progress-bar-fill" style="width:0%"></div>
+    </div>
+    <span id="progressPercent" class="progress-percent">0%</span>
+    <p id="progressDetail" class="progress-detail">Preparing your video pipeline...</p>
+  </div>
+</div>
+
+<!-- Video Section -->
+<div id="videoSection" style="display:none">
+  <h2>Your Video</h2>
+  <video id="videoPlayer" controls width="600"></video>
+</div>
+
+<script src="script.js"></script>
+
+</body>
+
+</html>
