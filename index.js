@@ -1,1 +1,2 @@
-console.log('Happy developing ✨')
+// Entry point — loads the actual server
+require("./server.js")
