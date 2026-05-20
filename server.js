@@ -270,30 +270,9 @@ async function downloadVideo(url,file){
 
 }
 
-/* ---------------- NORMALIZE VIDEO ---------------- */
+/* ---------------- PROCESS CLIP (normalize + trim in one pass) ---------------- */
 
-function normalizeVideo(input,output){
-
-    return new Promise((resolve,reject)=>{
-
-        ffmpeg(input)
-            .outputOptions([
-                "-vf scale=1280:720",
-                "-r 30",
-                "-c:v libx264",
-                "-preset veryfast",
-                "-pix_fmt yuv420p"
-            ])
-            .on("end",()=>resolve(output))
-            .on("error",reject)
-            .save(output)
-
-    })
-
-}
-/* ---------------- TRIM VIDEO ---------------- */
-
-function trimVideo(input,output,duration){
+function processClip(input, output, duration){
 
     return new Promise((resolve,reject)=>{
 
@@ -301,9 +280,13 @@ function trimVideo(input,output,duration){
             .setStartTime(0)
             .setDuration(duration)
             .outputOptions([
+                "-vf", "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2",
+                "-r 30",
                 "-c:v libx264",
-                "-preset veryfast",
-                "-pix_fmt yuv420p"
+                "-preset ultrafast",
+                "-crf 28",
+                "-pix_fmt yuv420p",
+                "-an"
             ])
             .on("end",()=>resolve(output))
             .on("error",reject)
@@ -552,13 +535,9 @@ async function runPipeline(topic) {
 
                 await downloadVideo(url, rawFile)
 
-                // Delete raw immediately after normalizing
-                await normalizeVideo(rawFile, normalizedFile)
+                // Single pass: normalize + trim together
+                await processClip(rawFile, trimmedFile, sceneDuration)
                 safeDelete(rawFile)
-
-                // Delete normalized immediately after trimming
-                await trimVideo(normalizedFile, trimmedFile, sceneDuration)
-                safeDelete(normalizedFile)
 
                 videoFiles.push(trimmedFile)
 
@@ -574,10 +553,8 @@ async function runPipeline(topic) {
                     const fbUrl = fbFile ? fbFile.link : fallbackClip.video_files[0].link
 
                     await downloadVideo(fbUrl, rawFile)
-                    await normalizeVideo(rawFile, normalizedFile)
+                    await processClip(rawFile, trimmedFile, sceneDuration)
                     safeDelete(rawFile)
-                    await trimVideo(normalizedFile, trimmedFile, sceneDuration)
-                    safeDelete(normalizedFile)
                     videoFiles.push(trimmedFile)
                 } catch (retryErr) {
                     console.error(`Clip ${i} retry also failed:`, retryErr.message, "— skipping")
