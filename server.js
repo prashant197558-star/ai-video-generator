@@ -233,10 +233,10 @@ function generateVoice(script){
 
 /* ---------------- PEXELS VIDEO ---------------- */
 
-async function getPexelsVideo(topic){
+async function getPexelsVideo(topic, fallback){
 
     const res = await fetch(
-        `https://api.pexels.com/videos/search?query=${topic}&per_page=30`,
+        `https://api.pexels.com/videos/search?query=${encodeURIComponent(topic)}&per_page=30`,
         {
             headers:{
                 Authorization:process.env.PEXELS_API_KEY
@@ -244,6 +244,16 @@ async function getPexelsVideo(topic){
         })
 
     const data = await res.json()
+
+    // If no videos found and we have a fallback keyword, try that
+    if ((!data.videos || data.videos.length === 0) && fallback && fallback !== topic) {
+        console.log(`No videos for "${topic}", falling back to "${fallback}"`)
+        return getPexelsVideo(fallback)
+    }
+
+    if (!data.videos || data.videos.length === 0) {
+        throw new Error(`No Pexels videos found for "${topic}"`)
+    }
 
     return data.videos
 }
@@ -518,38 +528,61 @@ async function runPipeline(topic) {
 
             console.log("Searching video for:", keyword)
 
-            const pexelsVideos = await getPexelsVideo(keyword)
-
-            let clip
-
-            do{
-                clip = pexelsVideos[Math.floor(Math.random()*pexelsVideos.length)]
-            }
-            while(usedVideos.has(clip.id) && usedVideos.size < pexelsVideos.length)
-
-            usedVideos.add(clip.id)
-
-            const videoFile = clip.video_files.find(v => v.quality === "sd")
-
-            const url = videoFile ? videoFile.link : clip.video_files[0].link
-
             const rawFile = `tmp/raw_${i}.mp4`
             const normalizedFile = `tmp/clip_${i}.mp4`
             const trimmedFile = `tmp/trim_${i}.mp4`
 
             tempFiles.push(rawFile, normalizedFile, trimmedFile)
 
-            await downloadVideo(url, rawFile)
+            try {
+                const pexelsVideos = await getPexelsVideo(keyword, topic)
 
-            // Delete raw immediately after normalizing
-            await normalizeVideo(rawFile, normalizedFile)
-            safeDelete(rawFile)
+                let clip
 
-            // Delete normalized immediately after trimming
-            await trimVideo(normalizedFile, trimmedFile, sceneDuration)
-            safeDelete(normalizedFile)
+                do{
+                    clip = pexelsVideos[Math.floor(Math.random()*pexelsVideos.length)]
+                }
+                while(usedVideos.has(clip.id) && usedVideos.size < pexelsVideos.length)
 
-            videoFiles.push(trimmedFile)
+                usedVideos.add(clip.id)
+
+                const videoFile = clip.video_files.find(v => v.quality === "sd")
+
+                const url = videoFile ? videoFile.link : clip.video_files[0].link
+
+                await downloadVideo(url, rawFile)
+
+                // Delete raw immediately after normalizing
+                await normalizeVideo(rawFile, normalizedFile)
+                safeDelete(rawFile)
+
+                // Delete normalized immediately after trimming
+                await trimVideo(normalizedFile, trimmedFile, sceneDuration)
+                safeDelete(normalizedFile)
+
+                videoFiles.push(trimmedFile)
+
+            } catch (clipErr) {
+                console.error(`Clip ${i} failed:`, clipErr.message, "— retrying with topic...")
+                safeDelete(rawFile)
+                safeDelete(normalizedFile)
+
+                try {
+                    const fallbackVideos = await getPexelsVideo(topic)
+                    const fallbackClip = fallbackVideos[Math.floor(Math.random() * fallbackVideos.length)]
+                    const fbFile = fallbackClip.video_files.find(v => v.quality === "sd")
+                    const fbUrl = fbFile ? fbFile.link : fallbackClip.video_files[0].link
+
+                    await downloadVideo(fbUrl, rawFile)
+                    await normalizeVideo(rawFile, normalizedFile)
+                    safeDelete(rawFile)
+                    await trimVideo(normalizedFile, trimmedFile, sceneDuration)
+                    safeDelete(normalizedFile)
+                    videoFiles.push(trimmedFile)
+                } catch (retryErr) {
+                    console.error(`Clip ${i} retry also failed:`, retryErr.message, "— skipping")
+                }
+            }
 
         }
 
