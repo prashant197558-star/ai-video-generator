@@ -8,11 +8,15 @@ const path = require("path")
 const gTTS = require("gtts")
 
 const ffmpeg = require("fluent-ffmpeg")
-const ffmpegPath = require("ffmpeg-static")
-const ffprobePath = require("ffprobe-static").path
 
-ffmpeg.setFfmpegPath(ffmpegPath)
-ffmpeg.setFfprobePath(ffprobePath)
+// Only use ffmpeg-static locally. On Render, we use the system ffmpeg (via nixpacks) 
+// because ffmpeg-static lacks libass (subtitle filter) support and fonts.
+if (!process.env.RENDER) {
+    const ffmpegPath = require("ffmpeg-static")
+    const ffprobePath = require("ffprobe-static").path
+    ffmpeg.setFfmpegPath(ffmpegPath)
+    ffmpeg.setFfprobePath(ffprobePath)
+}
 
 const app = express()
 
@@ -390,16 +394,18 @@ function addSubtitles(video,subtitles,output){
 
     return new Promise((resolve,reject)=>{
 
-        // Use absolute path and escape backslashes for Linux/Windows compat
         const absSubPath = path.resolve(subtitles).replace(/\\/g, '/').replace(/:/g, '\\:')
 
         ffmpeg(video)
             .outputOptions([
-                `-vf`, `subtitles='${absSubPath}'`,
+                `-vf`, `subtitles=${absSubPath}`,
                 "-c:v libx264",
                 "-preset ultrafast",
                 "-c:a copy"
             ])
+            .on("stderr", (stderrLine) => {
+                console.log("[FFmpeg Subtitles] " + stderrLine)
+            })
             .on("end",()=>resolve(output))
             .on("error",reject)
             .save(output)
