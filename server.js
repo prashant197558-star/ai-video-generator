@@ -319,10 +319,8 @@ function mergeVideos(videoList,output){
                 "-safe 0"
             ])
             .outputOptions([
-                "-c:v libx264",
-                "-preset veryfast",
-                "-crf 23",
-                "-pix_fmt yuv420p"
+                // Stream copy — clips are already normalized, no re-encode needed
+                "-c copy"
             ])
             .on("end",()=>resolve(output))
             .on("error",reject)
