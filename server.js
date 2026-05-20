@@ -395,7 +395,10 @@ function addSubtitles(video,subtitles,output){
 
         ffmpeg(video)
             .outputOptions([
-                `-vf`, `subtitles='${absSubPath}'`
+                `-vf`, `subtitles='${absSubPath}'`,
+                "-c:v libx264",
+                "-preset ultrafast",
+                "-c:a copy"
             ])
             .on("end",()=>resolve(output))
             .on("error",reject)
