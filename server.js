@@ -61,10 +61,10 @@ cleanTmp()
 let currentFinalVideo = null
 
 /* ---------------- PROGRESS TRACKING ---------------- */
-let progress = { percent: 0, step: "Idle", detail: "" }
+let progress = { percent: 0, step: "Idle", detail: "", videoUrl: null }
 
-function setProgress(percent, step, detail) {
-    progress = { percent, step, detail: detail || "" }
+function setProgress(percent, step, detail, videoUrl) {
+    progress = { percent, step, detail: detail || "", videoUrl: videoUrl || progress.videoUrl }
     console.log(`[PROGRESS ${percent}%] ${step} — ${detail || ""}`) 
 }
 
@@ -399,9 +399,12 @@ function addSubtitles(video,subtitles,output){
 
     return new Promise((resolve,reject)=>{
 
+        // Use absolute path and escape backslashes for Linux/Windows compat
+        const absSubPath = path.resolve(subtitles).replace(/\\/g, '/').replace(/:/g, '\\:')
+
         ffmpeg(video)
             .outputOptions([
-                `-vf subtitles='${subtitles}'`
+                `-vf`, `subtitles='${absSubPath}'`
             ])
             .on("end",()=>resolve(output))
             .on("error",reject)
@@ -429,18 +432,32 @@ function getAudioDuration(file){
 
 /* ---------------- API ---------------- */
 
-app.post("/api/create-video", async (req,res)=> {
+app.post("/api/create-video", (req,res)=> {
+
+    const {topic} = req.body
+
+    if (!topic) {
+        return res.status(400).json({ success: false, error: "No topic provided" })
+    }
+
+    // Respond IMMEDIATELY so Render doesn't timeout
+    res.json({ success: true, started: true })
+
+    // Run the pipeline in the background
+    runPipeline(topic)
+})
+
+async function runPipeline(topic) {
 
     // Clean any previous session files before starting
     cleanTmp()
     currentFinalVideo = null
+    progress.videoUrl = null
 
     // Collect all temp file paths so we can delete them later
     const tempFiles = []
 
     try {
-
-        const {topic} = req.body
 
         setProgress(2, "Generating Script", `Creating a 25-scene script about "${topic}"...`)
 
@@ -579,17 +596,13 @@ app.post("/api/create-video", async (req,res)=> {
             })
         } catch(e) {}
 
-        setProgress(100, "Complete!", "Your video is ready.")
-
         currentFinalVideo = finalVideo
+        const videoUrl = `/video/${path.basename(finalVideo)}`
+
+        setProgress(100, "Complete!", "Your video is ready.", videoUrl)
 
         console.log("Done:", finalVideo)
         console.log("[CLEANUP] All intermediate files deleted. Only final video remains.")
-
-        res.json({
-            success: true,
-            video: `/video/${path.basename(finalVideo)}`
-        })
 
     } catch (err) {
 
@@ -600,13 +613,9 @@ app.post("/api/create-video", async (req,res)=> {
         // On error, clean everything
         cleanTmp()
 
-        res.status(500).json({
-            success: false
-        })
-
     }
 
-})
+}
 
 
 

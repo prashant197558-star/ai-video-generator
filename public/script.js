@@ -27,55 +27,53 @@ async function generate() {
 
     updateProgress(0, "Starting...", "Sending your topic to the AI pipeline...")
 
-    // Start polling for progress
+    try {
+        // Fire the API call — it returns immediately
+        await fetch("/api/create-video", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ topic, duration })
+        })
+    } catch (err) {
+        // Ignore — the pipeline runs in the background
+    }
+
+    // Poll for progress until complete or error
     const pollInterval = setInterval(async () => {
         try {
             const pRes = await fetch("/api/progress")
             const pData = await pRes.json()
             updateProgress(pData.percent, pData.step, pData.detail)
-        } catch (e) { /* ignore */ }
-    }, 1000)
 
-    try {
-        const res = await fetch("/api/create-video", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({ topic, duration })
-        })
+            // Check if complete
+            if (pData.percent >= 100 && pData.videoUrl) {
+                clearInterval(pollInterval)
 
-        const data = await res.json()
+                setTimeout(() => {
+                    progressSection.style.display = "none"
+                    videoSection.style.display = "block"
 
-        clearInterval(pollInterval)
+                    const video = document.getElementById("videoPlayer")
+                    video.src = pData.videoUrl
+                    video.load()
+                    video.play()
 
-        if (data.success) {
+                    btn.disabled = false
+                    btn.textContent = "Generate Video"
+                }, 800)
+            }
 
-            updateProgress(100, "Complete!", "Your video is ready to watch.")
-
-            setTimeout(() => {
+            // Check if error
+            if (pData.step === "Error") {
+                clearInterval(pollInterval)
                 progressSection.style.display = "none"
-                videoSection.style.display = "block"
+                alert("Video generation failed: " + pData.detail)
+                btn.disabled = false
+                btn.textContent = "Generate Video"
+            }
 
-                const video = document.getElementById("videoPlayer")
-                video.src = data.video
-                video.load()
-                video.play()
-            }, 600)
-
-        } else {
-            progressSection.style.display = "none"
-            alert("Video generation failed. Check the server console for details.")
-        }
-
-    } catch (err) {
-        clearInterval(pollInterval)
-        progressSection.style.display = "none"
-        alert("Error: " + err.message)
-    }
-
-    btn.disabled = false
-    btn.textContent = "Generate Video"
+        } catch (e) { /* ignore network blips */ }
+    }, 2000)
 }
 
 function updateProgress(percent, label, detail) {
